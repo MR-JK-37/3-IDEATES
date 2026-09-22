@@ -1,0 +1,359 @@
+# CyberShield av-service Configuration
+# Arch Linux Production Installation
+# Documentation: https://github.com/cybershield/cybershield
+# Last updated: 2026-02-13
+
+# ════════════════════════════════════════════════════════════════════════════
+# CORE DATABASE CONFIGURATION
+# ════════════════════════════════════════════════════════════════════════════
+[database]
+# SQLite database path - stores threat cache and scan history
+path = "/var/lib/cybershield/hash_db.sqlite"
+
+# Connection pool configuration
+max_pool_size = 10
+# Pool timeout before returning connection to caller
+pool_timeout_seconds = 5
+# Database query timeout
+query_timeout_seconds = 30
+
+# Threat cache retention
+cache_retention_days = 90
+
+# ════════════════════════════════════════════════════════════════════════════
+# HEURISTIC ANALYSIS ENGINE
+# Stateless pattern-matching for suspicious characteristics
+# ════════════════════════════════════════════════════════════════════════════
+[heuristics]
+# Enable heuristic analysis (always runs on files)
+enabled = true
+
+# Entropy threshold (0.0-8.0) - detects packing/encryption
+# Higher = more restrictive, 7.8 catches most packers
+entropy_threshold = 7.8
+
+# Count of suspicious API strings before flagging file
+# Common suspicious patterns: CreateRemoteThread, WriteProcessMemory, etc.
+suspicious_string_threshold = 5
+
+# Obfuscation detection (eval(), exec(), reflection patterns)
+detect_obfuscation = true
+
+# Embedded executable detection (PE, ELF, Mach-O headers)
+detect_embedded = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# CLAMAV ANTIVIRUS ENGINE
+# External CLI integration with timeout protection
+# ════════════════════════════════════════════════════════════════════════════
+[clamav]
+# Enable ClamAV scanning (requires clamscan binary)
+enabled = true
+
+# Path to clamscan executable
+cli_path = "/usr/bin/clamscan"
+
+# Process timeout (seconds) - prevent hung clamscan
+timeout_seconds = 10
+
+# Maximum file size to scan (2GB)
+max_file_size = 2147483648
+
+# Log suspect files to database
+cache_hits = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# YARA RULE MATCHING ENGINE
+# Signature-based detection with custom/community rules
+# ════════════════════════════════════════════════════════════════════════════
+[yara]
+# Enable YARA rule scanning
+enabled = true
+
+# Rules directory path
+# Download: git clone https://github.com/Yara-Rules/rules.git
+rules_directory = "/var/lib/cybershield/rules"
+
+# Process timeout (seconds)
+timeout_seconds = 15
+
+# Recursive directory scanning
+scan_recursive = true
+
+# Rule categories to load (empty = load all)
+# Examples: "Trojan", "Malware", "Ransomware", "PUP", "Adware"
+rule_categories = []
+
+# Skip rules matching patterns (excludes rules by name)
+exclude_patterns = ["test_", "example_"]
+
+# ════════════════════════════════════════════════════════════════════════════
+# VIRUSTOTAL API INTEGRATION
+# Online threat intelligence with privacy-first design (SHA256 only)
+# ════════════════════════════════════════════════════════════════════════════
+[virustotal]
+# Enable VirusTotal integration
+enabled = true
+
+# API key - obtain from https://www.virustotal.com
+# Set via environment variable: export VIRUSTOTAL_API_KEY=...
+# Or: sudo systemctl edit av-service -> Environment="VIRUSTOTAL_API_KEY=..."
+api_key = ""
+
+# Rate limiting - prevents quota exhaustion
+# Free tier: 4 requests/minute
+# Premium tier: adjust based on your API tier
+rate_limit = 4
+
+# Query timeout (seconds)
+timeout_seconds = 10
+
+# Cache positive detections to SQLite for faster repeat scans
+cache_positive_hits = true
+
+# Cache retention period (days)
+cache_days = 30
+
+# PRIVACY: Only SHA256 hashes are sent to VirusTotal
+# Full files are NEVER uploaded
+send_full_files = false  # DO NOT CHANGE - security/privacy critical
+
+# ════════════════════════════════════════════════════════════════════════════
+# eBPF LSM KERNEL MONITORING
+# Real-time file access, execution, and permission monitoring
+# Requires: Linux 5.8+, CONFIG_BPF_LSM=y kernel config
+# ════════════════════════════════════════════════════════════════════════════
+[ebpf]
+# Enable eBPF LSM monitoring (requires kernel support)
+# Check availability: grep CONFIG_BPF_LSM /boot/config-$(uname -r)
+# If not available, use: pacman -S linux-zen (or linux-hardened from AUR)
+enabled = false
+
+# Compiled BPF object file path (from build-ebpf.sh)
+object_path = "/opt/cybershield/lib/lsm_file_monitor.o"
+
+# Ring buffer size (pages) - buffer for kernel→userspace events
+ring_buffer_size = 256
+
+# Monitor file open operations
+monitor_file_opens = true
+
+# Monitor process execution
+monitor_executions = true
+
+# Monitor file deletions/modifications
+monitor_writes = true
+
+# Syscall tracking (captures file changes)
+track_syscalls = true
+
+# Block suspicious files (if verdict=1 from LSM)
+block_suspicious = false
+
+# ════════════════════════════════════════════════════════════════════════════
+# LIBVIRT VM SANDBOX CONFIGURATION
+# Execute suspicious files in isolated VMs with behavior monitoring
+# Requires: libvirt, qemu, virsh available
+# ════════════════════════════════════════════════════════════════════════════
+[sandbox]
+# Enable VM sandbox analysis
+enabled = false
+
+# libvirt connection URI
+# Local system: qemu:///system (requires sudo)
+# User session: qemu:///session (unprivileged)
+libvirt_uri = "qemu:///system"
+
+# Base directory for VM snapshots
+vm_snapshot_base = "/var/lib/cybershield/vms"
+
+# VM execution timeout (seconds) - max time to run file in VM
+timeout_seconds = 60
+
+# VM resource limits
+cpu_cores = 2
+memory_mb = 2048
+disk_gb = 20
+
+# Snapshot name pattern (timestamp added automatically)
+snapshot_name_prefix = "cybershield-sandbox"
+
+# Post-execution actions
+# 0=none, 1=revert_snapshot, 2=delete_vm
+post_execution_action = 1  # revert snapshot
+
+# System call monitoring in VM
+monitor_syscalls = true
+
+# Network activity monitoring (if VM has network access)
+monitor_network = true
+
+# File I/O monitoring
+monitor_file_io = true
+
+# Behavioral signature matching (detects malware behavior patterns)
+enable_behavioral_analysis = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# LLM-BASED THREAT EXPLANATIONS
+# Local inference using quantized Llama 3.2 3B model
+# Requires: Ollama service running
+# ════════════════════════════════════════════════════════════════════════════
+[llm]
+# Enable LLM threat explanations
+enabled = false
+
+# Model name (download via: ollama pull llama3.2:3b)
+model = "llama3.2:3b"
+
+# Ollama server endpoint
+ollama_host = "http://localhost:11434"
+
+# Inference timeout (seconds)
+timeout_seconds = 30
+
+# Context window size (tokens)
+context_tokens = 2048
+
+# Temperature (0.0-1.0) - creativity level
+temperature = 0.3
+
+# Top-p nucleus sampling
+top_p = 0.9
+
+# Generate explanations for threat levels
+explain_malicious = true
+explain_suspicious = true
+explain_clean = false
+
+# ════════════════════════════════════════════════════════════════════════════
+# LOGGING CONFIGURATION
+# Structured logging with rotation and retention
+# ════════════════════════════════════════════════════════════════════════════
+[logging]
+# Log level: debug, info, warn, error
+# Systemd service runs at 'info' by default
+level = "info"
+
+# Log format: json (structured, machine-parseable) or text (human-readable)
+format = "json"
+
+# Output destinations: file, journal (systemd), or both
+output = "both"
+
+# File logging configuration
+log_directory = "/var/log/cybershield"
+log_filename = "av-service.log"
+
+# Log rotation (when file exceeds this size)
+max_size_mb = 100
+
+# Retention policy
+retention_days = 30
+max_log_files = 10
+
+# Include caller information (file, line number)
+include_caller = true
+
+# Include target information (systemd target context)
+include_target = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# IPC SOCKET CONFIGURATION
+# Unix domain socket for userspace→kernel communication
+# ════════════════════════════════════════════════════════════════════════════
+[ipc]
+# Unix datagram socket path
+socket_path = "/var/run/av_event.sock"
+
+# Socket permissions (octal)
+socket_mode = 0666
+
+# Maximum concurrent connections
+max_connections = 100
+
+# Buffer size for IPC messages
+buffer_size = 65536
+
+# Socket file cleanup on startup (remove stale socket)
+auto_cleanup = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE TUNING
+# Adjust for your workload and hardware
+# ════════════════════════════════════════════════════════════════════════════
+[performance]
+# Maximum concurrent file scans
+# Higher = more parallelism, more CPU/memory usage
+max_concurrent_scans = 4
+
+# SQLite cache size (MB) - larger = faster repeat scans
+cache_size_mb = 500
+
+# General timeout (seconds) - applies to operations without specific timeouts
+timeout_seconds = 30
+
+# Batch scan size - process files in batches for efficiency
+batch_size = 100
+
+# Thread pool size (0 = auto-detect)
+# Auto detection: number of CPU cores
+thread_pool_size = 0
+
+# Engine execution order (processes in sequence, falls back on failure):
+# [1] hash_check [2] heuristics [3] clamav [4] yara [5] virustotal
+# Typical flow: hash (instant) → heuristics (fast) → ClamAV (medium) → YARA (slow) → VT (API)
+engine_order = ["hash", "heuristics", "clamav", "yara", "virustotal"]
+
+# ════════════════════════════════════════════════════════════════════════════
+# SECURITY SETTINGS
+# File integrity, privilege requirements, and behavior controls
+# ════════════════════════════════════════════════════════════════════════════
+[security]
+# Run as unprivileged user (avsvc)
+use_unprivileged_user = true
+
+# Verify binary signatures before execution (future)
+verify_file_signatures = false
+
+# Block execution of suspicious files
+# 0=off, 1=warn (log only), 2=block (prevent execution)
+suspicious_execution_mode = 1
+
+# Drop capabilities (restrict av-service permissions)
+drop_capabilities = true
+
+# Seccomp filtering (restrict system calls)
+enable_seccomp = true
+
+# ════════════════════════════════════════════════════════════════════════════
+# SYSTEM INTEGRATION
+# Syslog, monitoring, and alerting
+# ════════════════════════════════════════════════════════════════════════════
+[integration]
+# Send alerts to syslog
+use_syslog = true
+
+# Syslog facility (local0-local7)
+syslog_facility = "local0"
+
+# Send alerts to external service (future)
+# webhook_url = "https://example.com/alerts"
+# webhook_timeout = 5
+
+# ════════════════════════════════════════════════════════════════════════════
+# EXPERIMENTAL/ADVANCED FEATURES
+# Use with caution - may not be stable in production
+# ════════════════════════════════════════════════════════════════════════════
+[experimental]
+# Machine learning-based threat detection (future)
+ml_detection_enabled = false
+
+# Automatic rule updates from upstream (future)
+auto_update_rules = false
+
+# Behavior-based anomaly detection (beta)
+anomaly_detection = false
+
+# Cloud telemetry (disabled by default for privacy)
+send_telemetry = false

@@ -1,0 +1,29 @@
+[package]
+name = "av-ai"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+reqwest = { version = "0.11", features = ["json"] }
+
+# LLM support (using local Ollama or Llama.cpp)
+# Instead of llama-cpp-rs (which has complex compilation),
+# we'll use HTTP API to Ollama (open-source LLM framework)
+futures = "0.3"
+base64 = "0.21"
+
+[[bin]]
+name = "av-ai"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

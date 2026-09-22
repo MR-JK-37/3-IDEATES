@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.cybershield.android">
+
+    <!-- Storage permissions for scanning -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Scoped storage (Android 11+) -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- Internet for VirusTotal API and URL scanning -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Background scanning -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Query packages for APK scanning -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Device admin for advanced protection (optional) -->
+    <!-- <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" /> -->
+
+    <application
+        android:allowBackup="false"
+        android:debuggable="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:name=".CyberShieldApp"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CyberShield"
+        android:usesCleartextTraffic="false"
+        tools:replace="android:allowBackup,android:debuggable">
+
+        <!-- Main Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.CyberShield"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Scanner Service -->
+        <service
+            android:name=".service.ScannerService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
+                <action android:name="com.cybershield.android.action.SCAN_FILE" />
+                <action android:name="com.cybershield.android.action.SCAN_DIR" />
+                <action android:name="com.cybershield.android.action.STOP_SCAN" />
+            </intent-filter>
+        </service>
+
+        <!-- Notification Service -->
+        <service
+            android:name=".service.NotificationService"
+            android:exported="false" />
+
+        <!-- Boot Completion Receiver (optional) -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- File Provider for sharing scan results -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.cybershield.android.fileprovider"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- App Shortcuts (optional) -->
+        <meta-data
+            android:name="android.app.shortcuts"
+            android:resource="@xml/app_shortcuts" />
+
+    </application>
+
+</manifest>

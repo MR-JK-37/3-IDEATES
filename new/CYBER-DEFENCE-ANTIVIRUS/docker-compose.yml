@@ -1,0 +1,217 @@
+version: '3.8'
+
+services:
+  # Ollama LLM Backend
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cybershield-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cybershield
+
+  # PostgreSQL for Threat Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: cybershield-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: cybershield
+      POSTGRES_PASSWORD: cybershield_dev_pass
+      POSTGRES_DB: av_database
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybershield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cybershield
+
+  # Redis for Caching
+  redis:
+    image: redis:7-alpine
+    container_name: cybershield-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cybershield
+
+  # av-service (Rust)
+  av-service:
+    build:
+      context: ./av-service
+      dockerfile: Dockerfile
+    container_name: cybershield-av-service
+    ports:
+      - "3001:3001"
+    environment:
+      AV_SERVICE_PORT: "3001"
+      AV_DB_HOST: postgres
+      AV_DB_PORT: "5432"
+      AV_DB_USER: cybershield
+      AV_DB_PASSWORD: cybershield_dev_pass
+      AV_DB_NAME: av_database
+      AV_REDIS_URL: redis://redis:6379
+      AV_SANDBOX_URL: http://av-sandbox:3002
+      AV_AI_URL: http://av-ai:3003
+      RUST_LOG: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./av-service:/workspace
+      - av_cache:/target
+    networks:
+      - cybershield
+    restart: unless-stopped
+
+  # av-sandbox (Rust) - Runs in privileged mode for VM access
+  av-sandbox:
+    build:
+      context: ./av-sandbox
+      dockerfile: Dockerfile
+    container_name: cybershield-av-sandbox
+    ports:
+      - "3002:3002"
+    environment:
+      AV_SANDBOX_PORT: "3002"
+      AV_HYPERVISOR: "qemu:///system"
+      AV_VM_MEMORY: "2048"
+      AV_VM_TIMEOUT: "60"
+      RUST_LOG: debug
+    volumes:
+      - ./av-sandbox:/workspace
+      - av_cache:/target
+      - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock:rw
+    networks:
+      - cybershield
+    restart: unless-stopped
+    # Note: Requires --privileged flag for full VM access
+    # Uncomment below if running on Linux with KVM support
+    # privileged: true
+    # volumes:
+    #   - /dev/kvm:/dev/kvm:rw
+
+  # av-ai (Rust)
+  av-ai:
+    build:
+      context: ./av-ai
+      dockerfile: Dockerfile
+    container_name: cybershield-av-ai
+    ports:
+      - "3003:3003"
+    environment:
+      AV_AI_PORT: "3003"
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODEL: "llama3.2-3b"
+      RUST_LOG: debug
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./av-ai:/workspace
+      - av_cache:/target
+    networks:
+      - cybershield
+    restart: unless-stopped
+
+  # Prometheus for Metrics (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cybershield-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - cybershield
+    restart: unless-stopped
+
+  # Grafana for Dashboards (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cybershield-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - cybershield
+    restart: unless-stopped
+
+  # Jaeger for Distributed Tracing (Optional)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: cybershield-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "6831:6831/udp" # Jaeger agent
+    networks:
+      - cybershield
+    restart: unless-stopped
+
+networks:
+  cybershield:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  postgres_data:
+  redis_data:
+  av_cache:
+  prometheus_data:
+  grafana_data:
+
+# Usage:
+# 1. Start all services:
+#    docker-compose up -d
+#
+# 2. View logs:
+#    docker-compose logs -f av-service
+#
+# 3. Access services:
+#    - av-service: http://localhost:3001
+#    - av-sandbox: http://localhost:3002
+#    - av-ai: http://localhost:3003
+#    - Ollama: http://localhost:11434
+#    - Prometheus: http://localhost:9090
+#    - Grafana: http://localhost:3000
+#    - Jaeger: http://localhost:16686
+#
+# 4. Stop all services:
+#    docker-compose down
+#
+# 5. Clean up volumes:
+#    docker-compose down -v

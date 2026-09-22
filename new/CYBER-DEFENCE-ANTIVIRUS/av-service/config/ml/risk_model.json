@@ -1,0 +1,13 @@
+{
+  "bias": -3.03216744205163,
+  "w_entropy": 5.28718794211182,
+  "w_executable_ext": 0.09733912882715919,
+  "w_script_ext": 1.1009185158161385,
+  "w_doc_or_media_ext": 2.338668599647799,
+  "w_valid_pe": 0.09733912882715919,
+  "w_embedded_pe": 0.09733912882715919,
+  "w_obfuscation": -3.980703801923693,
+  "w_suspicious_strings": -1.0550602176949075,
+  "suspicious_threshold": 0.45,
+  "malicious_threshold": 0.8
+}

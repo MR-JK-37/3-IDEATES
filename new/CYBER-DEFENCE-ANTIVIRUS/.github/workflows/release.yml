@@ -1,0 +1,400 @@
+name: Release All Platforms
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag to release (example: v1.0.0). Leave empty to skip release upload.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref_name || github.event.inputs.release_tag || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Preflight validates repository state, tag/version coherence,
+  # and whether mobile jobs are allowed (Tauri v2 only).
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      tauri_major: ${{ steps.detect.outputs.tauri_major }}
+      release_tag: ${{ steps.detect.outputs.release_tag }}
+      app_version: ${{ steps.detect.outputs.app_version }}
+      mobile_enabled: ${{ steps.detect.outputs.mobile_enabled }}
+      mobile_reason: ${{ steps.detect.outputs.mobile_reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate required files
+        shell: bash
+        run: |
+          test -f av-ui-desktop/package.json
+          test -f av-ui-desktop/src-tauri/Cargo.toml
+          test -f av-ui-desktop/src-tauri/tauri.conf.json
+
+      - name: Detect versions, tag, and mobile gate
+        id: detect
+        shell: bash
+        run: |
+          tauri_major=$(grep -E '^tauri\s*=\s*\{' av-ui-desktop/src-tauri/Cargo.toml | sed -E 's/.*version\s*=\s*"([0-9]+)\..*/\1/' || true)
+          if [[ -z "$tauri_major" ]]; then tauri_major="1"; fi
+
+          cargo_version=$(grep -E '^version\s*=\s*"' av-ui-desktop/src-tauri/Cargo.toml | head -n1 | sed -E 's/version\s*=\s*"([^"]+)"/\1/')
+          npm_version=$(node -p "require('./av-ui-desktop/package.json').version")
+          tauri_conf_version=$(node -p "JSON.parse(require('fs').readFileSync('./av-ui-desktop/src-tauri/tauri.conf.json','utf8')).package.version")
+
+          if [[ "$cargo_version" != "$npm_version" || "$cargo_version" != "$tauri_conf_version" ]]; then
+            echo "Version mismatch detected:"
+            echo "  Cargo.toml:      $cargo_version"
+            echo "  package.json:    $npm_version"
+            echo "  tauri.conf.json: $tauri_conf_version"
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+          else
+            release_tag="${{ github.event.inputs.release_tag }}"
+          fi
+
+          # Only enforce semver format/version match when a release tag exists.
+          if [[ -n "$release_tag" ]]; then
+            if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+              echo "Invalid release tag format: '$release_tag'"
+              echo "Expected: vX.Y.Z (optional suffix allowed)"
+              exit 1
+            fi
+
+            tag_ver="${release_tag#v}"
+            if [[ "$tag_ver" != "$cargo_version" && "$tag_ver" != ${cargo_version}-* ]]; then
+              echo "Tag/version mismatch: tag=$tag_ver app=$cargo_version"
+              exit 1
+            fi
+          fi
+
+          mobile_enabled="false"
+          mobile_reason="Tauri v1 detected; Android/iOS jobs disabled."
+          if [[ "$tauri_major" == "2" ]]; then
+            mobile_enabled="true"
+            mobile_reason="Tauri v2 detected; Android/iOS jobs enabled."
+          fi
+
+          echo "tauri_major=$tauri_major" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "app_version=$cargo_version" >> "$GITHUB_OUTPUT"
+          echo "mobile_enabled=$mobile_enabled" >> "$GITHUB_OUTPUT"
+          echo "mobile_reason=$mobile_reason" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight summary
+        run: |
+          {
+            echo "## Release Preflight"
+            echo "- App version: \\`${{ steps.detect.outputs.app_version }}\\`"
+            echo "- Release tag: \\`${{ steps.detect.outputs.release_tag || 'not provided' }}\\`"
+            echo "- Tauri major: \\`${{ steps.detect.outputs.tauri_major }}\\`"
+            echo "- Mobile gate: \\`${{ steps.detect.outputs.mobile_enabled }}\\`"
+            echo "- Mobile note: ${{ steps.detect.outputs.mobile_reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Desktop is critical: any desktop failure should fail the release pipeline.
+  build-desktop:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: |
+              av-ui-desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.msi
+              av-ui-desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.exe
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.msi
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.exe
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: |
+              av-ui-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/**/*.AppImage
+              av-ui-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/**/*.deb
+              av-ui-desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/**/*.rpm
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.AppImage
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.deb
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.rpm
+          - platform: macos-latest
+            target: universal-apple-darwin
+            bundles: |
+              av-ui-desktop/src-tauri/target/universal-apple-darwin/release/bundle/**/*.app
+              av-ui-desktop/src-tauri/target/universal-apple-darwin/release/bundle/**/*.dmg
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.app
+              av-ui-desktop/src-tauri/target/release/bundle/**/*.dmg
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: av-ui-desktop
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: av-ui-desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libxdo-dev
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build desktop bundle
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: ${{ matrix.bundles }}
+          if-no-files-found: error
+
+  # Arch packaging verification is performed in an Arch Linux container.
+  build-arch:
+    needs: preflight
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arch packaging tools
+        shell: bash
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git namcap
+
+      - name: Verify PKGBUILD exists
+        shell: bash
+        run: |
+          test -f PKGBUILD
+
+      - name: Lint PKGBUILD
+        shell: bash
+        run: |
+          bash -n PKGBUILD
+          namcap PKGBUILD || true
+
+      - name: Generate .SRCINFO (non-root)
+        shell: bash
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE' && makepkg --printsrcinfo > .SRCINFO"
+
+      - name: Create Arch checksums
+        shell: bash
+        run: |
+          sha256sum PKGBUILD .SRCINFO > ARCH_SHA256SUMS.txt
+
+      - name: Upload Arch artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-packaging
+          path: |
+            PKGBUILD
+            .SRCINFO
+            ARCH_SHA256SUMS.txt
+          if-no-files-found: error
+
+  # Mobile builds are optional/non-critical and only enabled on Tauri v2.
+  build-android:
+    needs: preflight
+    if: needs.preflight.outputs.mobile_enabled == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: av-ui-desktop
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: av-ui-desktop/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - name: Install NDK
+        run: sdkmanager "ndk;25.0.8775105"
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify mobile files
+        shell: bash
+        run: |
+          test -f src-tauri/tauri.conf.json
+      - name: Init Android
+        run: npm run tauri android init
+      - name: Build APK
+        run: npm run tauri android build --apk
+      - name: Build AAB
+        run: npm run tauri android build
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android
+          path: |
+            av-ui-desktop/src-tauri/gen/android/app/build/outputs/**/*.apk
+            av-ui-desktop/src-tauri/gen/android/app/build/outputs/**/*.aab
+          if-no-files-found: warn
+
+  build-ios:
+    needs: preflight
+    if: needs.preflight.outputs.mobile_enabled == 'true'
+    continue-on-error: true
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: av-ui-desktop
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: av-ui-desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify mobile files
+        shell: bash
+        run: |
+          test -f src-tauri/tauri.conf.json
+      - name: Init iOS
+        run: npm run tauri ios init
+      - name: Build iOS IPA
+        run: npm run tauri ios build -- --export-method ad-hoc
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-ios
+          path: av-ui-desktop/src-tauri/gen/ios/build/*.ipa
+          if-no-files-found: warn
+
+  # Publish core release from desktop + arch outputs.
+  release-core:
+    needs: [preflight, build-desktop, build-arch]
+    if: needs.preflight.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Generate release checksums
+        shell: bash
+        run: |
+          cd release-artifacts
+          find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+
+      - name: Import GPG key (optional)
+        if: secrets.RELEASE_GPG_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          echo "${{ secrets.RELEASE_GPG_PRIVATE_KEY }}" | gpg --batch --import
+
+      - name: Sign checksums (optional)
+        if: secrets.RELEASE_GPG_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          cd release-artifacts
+          gpg --batch --yes --armor --detach-sign --output SHA256SUMS.txt.asc SHA256SUMS.txt
+
+      - name: Upload core release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.release_tag }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            release-artifacts/**/*
+            release-artifacts/SHA256SUMS.txt
+            release-artifacts/SHA256SUMS.txt.asc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # If mobile ran, upload mobile artifacts into the same draft release.
+  release-mobile:
+    needs: [preflight, build-android, build-ios, release-core]
+    if: needs.preflight.outputs.release_tag != '' && needs.preflight.outputs.mobile_enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mobile-*
+          merge-multiple: true
+          path: mobile-artifacts
+      - name: Upload mobile release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.release_tag }}
+          draft: true
+          files: mobile-artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mobile-gate-note:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mobile gate summary
+        run: |
+          {
+            echo "## Mobile Build Gate"
+            echo "- Enabled: \\`${{ needs.preflight.outputs.mobile_enabled }}\\`"
+            echo "- Reason: ${{ needs.preflight.outputs.mobile_reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ needs.preflight.outputs.mobile_reason }}"

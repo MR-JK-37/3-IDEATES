@@ -1,0 +1,74 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=FSFilter
+ClassGuid={90170B1D-0D61-45f9-B9B4-71ECC535E9DC}
+Provider=%AVCompany%
+DriverVer=02/13/2026,1.0.0.0
+CatalogFile=minifilter.cat
+
+[DestinationDirs]
+DefaultDestDir = 12
+MiniFilter.DriverFiles = 12            ;%windir%\system32\drivers
+
+;;
+;; Default install sections
+;;
+
+[DefaultInstall]
+OptionDesc          = %ServiceDescription%
+Addreg              = CommonAddReg
+
+[DefaultInstall.Services]
+AddService          = %ServiceName%,,GenericService
+
+;;
+;; Default uninstall sections
+;;
+
+[DefaultUninstall]
+DelReg              = CommonAddReg
+
+[DefaultUninstall.Services]
+DelService          = %ServiceName%,0x200      ;Ensure service is stopped before deleting
+
+;;
+;; Services Section
+;;
+
+[GenericService]
+DisplayName         = %ServiceDisplayName%
+ServiceType         = 2                        ;SERVICE_FILE_SYSTEM_DRIVER
+StartType           = 3                        ;SERVICE_DEMAND_START
+ErrorControl        = 1                        ;SERVICE_ERROR_NORMAL
+ServiceBinary       = %12%\%DriverFileName%.sys
+LoadOrderGroup      = "FSFilter Activity Monitor"
+AddReg              = CommonAddReg, MiniFilterAddReg
+
+;;
+;; Registry Modifications
+;;
+
+[CommonAddReg]
+HKLM,"System\CurrentControlSet\Services\%ServiceName%\Instances","DefaultInstance",,%DefaultInstance%
+HKLM,"System\CurrentControlSet\Services\%ServiceName%\Instances\%Instance%","Altitude",0x00000000,%Altitude%
+HKLM,"System\CurrentControlSet\Services\%ServiceName%\Instances\%Instance%","Flags",0x00010001,%Flags%
+
+[MiniFilterAddReg]
+;
+; List any registry modifications here
+;
+
+;;
+;; String Section
+;;
+
+[Strings]
+AVCompany               = "Antivirus Project"
+ServiceDescription     = "Real-time antivirus file monitoring driver"
+ServiceDisplayName     = "AV Protection Filter"
+ServiceName            = "AVFilter"
+DriverFileName         = "minifilter"
+DefaultInstance        = "AVFilter Instance"
+Instance               = "AVFilter Instance"
+Altitude               = "370000"
+Flags                  = 0

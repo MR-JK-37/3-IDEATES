@@ -1,0 +1,6 @@
+{
+  "realTimeProtection": false,
+  "autoScan": true,
+  "scanIntervalHours": 24,
+  "quarantineEnabled": true
+}

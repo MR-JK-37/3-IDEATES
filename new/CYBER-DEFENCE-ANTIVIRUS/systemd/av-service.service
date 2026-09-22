@@ -1,0 +1,153 @@
+[Unit]
+Description=CyberShield Antivirus Service - Multi-Engine Threat Detection
+Documentation=man:av-service(1) file:///usr/share/doc/cybershield/README.md
+After=network.target multi-user.target
+Before=multi-user.target
+
+# Security and ordering
+ConditionVirtualization=!container  # Don't run in containers by default
+DefaultDependencies=yes
+
+[Service]
+# Service type (simple: long-running, no sd_notify)
+Type=simple
+ExecStart=/opt/cybershield/bin/av-service
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# User/Group - run as unprivileged service user
+User=avsvc
+Group=avsvc
+DynamicUser=no  # Use static user for consistent permissions
+
+# Working directory
+WorkingDirectory=/var/lib/cybershield
+
+# Environment
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=av-service
+SyslogFacility=local0
+
+# Environment variables
+EnvironmentFile=/etc/default/av-service
+EnvironmentFile=-/etc/cybershield/env
+Environment="RUST_LOG=info"
+Environment="HASH_DB_PATH=/var/lib/cybershield/hash_db.sqlite"
+Environment="AV_SOCKET_PATH=/run/cybershield/av_event.sock"
+Environment="AV_SERVICE_PORT=3001"
+Environment="QUARANTINE_DIR=/var/lib/cybershield/quarantine"
+
+# ════════════════════════════════════════════════════════════════════════════
+# SECURITY HARDENING - Maximum restrictions with eBPF LSM capability
+# ════════════════════════════════════════════════════════════════════════════
+
+# Isolation
+PrivateTmp=yes                          # Private /tmp (noexec,nosuid,nodev)
+PrivateDevices=no                       # Need access to /dev for eBPF/kvm (controlled below)
+PrivateNetwork=no                       # Need network for VirusTotal API
+NoNewPrivileges=yes                     # No capability escalation
+
+# File system hardening
+ProtectSystem=strict                    # Read-only /, /usr, /boot (except /var, /etc)
+ProtectHome=yes                         # Hide /home, /root
+ReadWritePaths=/var/lib/cybershield \
+                /var/log/cybershield \
+                /run/cybershield
+ProtectClock=yes                        # Deny clock adjustment
+ProtectHostname=yes                     # Deny hostname changes
+ProtectKernelLogs=yes                   # Deny kernel log reading
+ProtectKernelModules=yes                # Deny kernel module loading/unloading
+ProtectKernelTunables=yes               # Deny sysctl/proc modification
+
+# Memory and execution hardening
+MemoryDenyWriteExecute=yes              # Deny W^X (prevent JIT+shellcode attacks)
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK  # Only needed socket families
+RestrictNamespaces=yes                  # Deny namespace creation (except needed)
+RestrictRealtime=yes                    # Deny real-time priority
+UMask=0077                              # Restrictive file mode
+
+# SystemCall filtering - allow only necessary syscalls
+SystemCallFilter=@system-service        # Default safe set
+SystemCallFilter=~@privileged @resources @cpu-emulation @aio @ipc @keyring @memlock @obsolete @pkey
+SystemCallErrorNumber=EPERM             # Return EPERM instead of killing process
+
+# eBPF-specific permissions (needed for LSM hooks)
+SystemCallFilter=bpf
+SystemCallFilter=bpf_raw_tracepoint_open
+SystemCallFilter=perfmon_attach
+SystemCallFilter=tracepoint_attach
+
+# libvirt/sandbox VM management (if enabled)
+# Uncomment if using libvirt sandboxing:
+# SystemCallFilter=connect
+# SystemCallFilter=socket
+# SystemCallFilter=sendto
+# PrivateDevices=no
+# DeviceAllow=/dev/kvm rw
+# DeviceAllow=/dev/net/tun rw
+
+# Capability restrictions - drop most capabilities
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_ADMIN CAP_PERFMON
+AmbientCapabilities=
+
+# Deny capabilities (explicitly)
+CapabilityBoundingSet=~CAP_CHOWN \
+                      ~CAP_DAC_OVERRIDE \
+                      ~CAP_DAC_READ_SEARCH \
+                      ~CAP_SETFCAP \
+                      ~CAP_SETUID \
+                      ~CAP_SETGID \
+                      ~CAP_SETPCAP \
+                      ~CAP_NET_RAW \
+                      ~CAP_SYS_CHROOT \
+                      ~CAP_KILL \
+                      ~CAP_IPC_LOCK \
+                      ~CAP_WAKE_ALARM
+
+# ════════════════════════════════════════════════════════════════════════════
+# RESOURCE LIMITS
+# ════════════════════════════════════════════════════════════════════════════
+
+# Memory limit (default: 2GB, increase for large deployments)
+MemoryMax=2G
+MemoryHigh=1536M                        # Soft limit triggers kernel reclaim
+MemoryLimit=2G
+
+# CPU limits
+CPUQuota=80%                            # Max 80% of one CPU
+CPUAccounting=yes
+
+# File descriptors
+LimitNOFILE=65536                       # Max open files
+LimitNPROC=512                          # Max processes per user
+
+# I/O limits
+IOWeight=500                            # Fair I/O weight (default 100)
+TasksMax=256                            # Max tasks in cgroup
+
+# ════════════════════════════════════════════════════════════════════════════
+# DIRECTORIES & FILE PERMISSIONS
+# ════════════════════════════════════════════════════════════════════════════
+
+# Create necessary directories with proper permissions
+RuntimeDirectory=cybershield
+RuntimeDirectoryMode=0755
+
+StateDirectory=cybershield
+StateDirectoryMode=0700                 # Private database
+
+CacheDirectory=cybershield
+CacheDirectoryMode=0700
+
+LogsDirectory=cybershield
+LogsDirectoryMode=0700
+
+# ════════════════════════════════════════════════════════════════════════════
+
+[Install]
+WantedBy=multi-user.target
+

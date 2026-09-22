@@ -1,0 +1,382 @@
+# PKGBUILD for CyberShield antivirus on Arch Linux - Production Package
+# Maintainer: CyberShield Development Team <dev@cybershield.dev>
+# Upstream URL: https://github.com/cybershield/cybershield
+# Provides: Enterprise-grade multi-engine antivirus with kernel eBPF LSM monitoring
+
+pkgname=cybershield
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Production antivirus: kernel eBPF/LSM monitoring, multi-engine detection (ClamAV/YARA/VirusTotal), libvirt sandbox, local LLM explanations"
+arch=('x86_64')
+url="https://github.com/cybershield/cybershield"
+license=('Apache')
+
+# Runtime Dependencies
+depends=(
+    'glibc>=2.35'        # C runtime (required)
+    'openssl>=1.1'       # TLS/SSL
+    'sqlite>=3.40'       # Local threat database
+    'yara>=4.3'          # YARA rule engine
+    'clamav>=1.0'        # ClamAV antivirus engine
+    'libvirt>=9.0'       # VM sandbox hypervisor (optional but recommended)
+    'libclamav>=1.0'     # ClamAV library interface
+    'libyara>=4.3'       # YARA library
+)
+
+# Build Dependencies
+makedepends=(
+    'cargo>=1.70'        # Rust package manager
+    'rust>=1.70'         # Rust compiler
+    'llvm>=15'           # LLVM toolchain for BPF compilation
+    'clang>=15'          # Clang compiler for BPF backend
+    'pkg-config>=1.8'    # Build configuration utility
+    'linux-headers'      # Kernel headers for BPF LSM
+    'git'                # Version control
+    'protobuf'           # Protocol buffers (if needed for dependencies)
+)
+optdepends=(
+    'ollama: For local LLM threat explanations (Llama 3.2 3B quantized)'
+    'docker: For containerized sandbox analysis'
+    'qemu: Alternative hypervisor for sandbox VMs'
+    'virt-manager: GUI for VM management'
+)
+
+conflicts=('clamav')  # CyberShield includes clamav integration but not the full clamav package
+
+source=(
+    "${pkgname}-${pkgver}.tar.gz::https://github.com/cybershield/cybershield/archive/v${pkgver}.tar.gz"
+)
+
+sha256sums=(
+    'SKIP'  # Replace with actual SHA256 after release: $(sha256sum archive.tar.gz | cut -d' ' -f1)
+)
+
+backup=(
+    'etc/cybershield/config.toml'
+    'etc/default/av-service'
+)
+
+# BPF_LSM kernel check - verify kernel supports eBPF LSM hooks
+_check_bpf_lsm() {
+    if ! grep -q "CONFIG_BPF_LSM=y" /boot/config-$(uname -r); then
+        warning "BPF_LSM not enabled in current kernel. eBPF monitoring will be disabled."
+        warning "To enable: compile kernel with CONFIG_BPF_LSM=y"
+        warning "Or use: AUR/linux-zen or linux-hardened (usually has BPF_LSM enabled)"
+    fi
+}
+
+# Prepare source - verify dependencies and kernel version
+prepare() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    msg "Checking build environment..."
+    
+    # Verify Rust toolchain
+    if ! command -v rustc &> /dev/null; then
+        error "Rust compiler not found. Install: pacman -S rust"
+        return 1
+    fi
+    
+    # Verify LLVM/Clang for BPF compilation
+    if ! command -v clang &> /dev/null; then
+        error "Clang compiler not found. Install: pacman -S clang"
+        return 1
+    fi
+    
+    # Check for Linux headers
+    if [ ! -d /usr/lib/modules/$(uname -r)/build ]; then
+        error "Linux headers not found. Install: pacman -S linux-headers"
+        return 1
+    fi
+    
+    # Warn if BPF_LSM not available
+    _check_bpf_lsm
+    
+    msg "Build environment verification complete"
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    # Build eBPF LSM kernel module (if BPF_LSM available)
+    if [ -d av-kernel-linux/ebpf ]; then
+        msg "Building eBPF LSM kernel program..."
+        cd av-kernel-linux/ebpf
+        
+        # Compile BPF object file
+        clang -O2 -target bpf \
+            -D__KERNEL__ -D__BPF_TRACING__ \
+            -I/usr/include/linux \
+            -c lsm_file_monitor.c -o lsm_file_monitor.o
+        
+        if [ ! -f lsm_file_monitor.o ]; then
+            error "BPF compilation failed"
+            return 1
+        fi
+        
+        msg "✓ BPF object compiled: lsm_file_monitor.o"
+        cd - > /dev/null
+    fi
+
+    # Build Rust components with release optimizations
+    msg "Building av-service (Rust)..."
+    cd av-service
+    RUSTFLAGS="-C opt-level=3 -C lto=fat -C codegen-units=1" \
+        cargo build --release --locked
+    cd - > /dev/null
+
+    msg "Building av-sandbox (Rust + libvirt)..."
+    if [ -d av-sandbox ]; then
+        cd av-sandbox
+        RUSTFLAGS="-C opt-level=3 -C lto=fat" \
+            cargo build --release --locked
+        cd - > /dev/null
+    fi
+
+    msg "Building av-ai (Rust + llama-cpp-rs)..."
+    if [ -d av-ai ]; then
+        cd av-ai
+        RUSTFLAGS="-C opt-level=3 -C lto=fat" \
+            cargo build --release --locked
+        cd - > /dev/null
+    fi
+
+    msg "All components built successfully"
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    # Create installation directories with proper permissions
+    install -dm755 "${pkgdir}/opt/cybershield/bin"
+    install -dm755 "${pkgdir}/opt/cybershield/lib"
+    install -dm755 "${pkgdir}/etc/cybershield"
+    install -dm755 "${pkgdir}/var/lib/cybershield"
+    install -dm755 "${pkgdir}/var/log/cybershield"
+    install -dm755 "${pkgdir}/var/lib/cybershield/rules"
+    install -dm755 "${pkgdir}/var/lib/cybershield/vms"
+    install -dm755 "${pkgdir}/usr/lib/systemd/system"
+    install -dm755 "${pkgdir}/usr/lib/systemd/system-preset"
+    install -dm755 "${pkgdir}/usr/share/doc/cybershield"
+    install -dm755 "${pkgdir}/usr/share/man/man1"
+
+    # Install main service binary
+    msg "Installing binaries..."
+    install -Dm755 av-service/target/release/av-service "${pkgdir}/opt/cybershield/bin/av-service"
+
+    # Install eBPF object file
+    if [ -f av-kernel-linux/ebpf/lsm_file_monitor.o ]; then
+        msg "Installing eBPF LSM object..."
+        install -Dm644 av-kernel-linux/ebpf/lsm_file_monitor.o \
+            "${pkgdir}/opt/cybershield/lib/lsm_file_monitor.o"
+    fi
+
+    # Install optional components if built
+    if [ -f av-sandbox/target/release/av-sandbox ]; then
+        msg "Installing sandbox component..."
+        install -Dm755 av-sandbox/target/release/av-sandbox "${pkgdir}/opt/cybershield/bin/av-sandbox"
+    fi
+
+    if [ -f av-ai/target/release/av-ai ]; then
+        msg "Installing LLM AI component..."
+        install -Dm755 av-ai/target/release/av-ai "${pkgdir}/opt/cybershield/bin/av-ai"
+    fi
+
+    # Install systemd unit files (hardened)
+    msg "Installing systemd units..."
+    install -Dm644 systemd/av-service.service "${pkgdir}/usr/lib/systemd/system/av-service.service"
+    install -Dm644 systemd/av-service.socket "${pkgdir}/usr/lib/systemd/system/av-service.socket"
+    
+    # Create service preset to enable by default
+    cat > "${pkgdir}/usr/lib/systemd/system-preset/40-cybershield.preset" << 'EOF'
+enable av-service.service
+enable av-service.socket
+EOF
+    chmod 644 "${pkgdir}/usr/lib/systemd/system-preset/40-cybershield.preset"
+
+    # Install configuration template
+    msg "Installing configuration..."
+    if [ -f config/cybershield.toml ]; then
+        install -Dm644 config/cybershield.toml "${pkgdir}/etc/cybershield/config.toml"
+    elif [ -f config/default.toml ]; then
+        install -Dm644 config/default.toml "${pkgdir}/etc/cybershield/config.toml"
+    else
+        install -Dm644 /dev/null "${pkgdir}/etc/cybershield/config.toml"
+    fi
+
+    # Install environment file for systemd
+    cat > "${pkgdir}/etc/default/av-service" << 'EOF'
+# CyberShield av-service environment configuration
+# Source: /etc/default/av-service (read by systemd)
+
+# Rust logging level: debug, info, warn, error
+RUST_LOG=info
+
+# Database location
+HASH_DB_PATH=/var/lib/cybershield/hash_db.sqlite
+
+# VirusTotal API key (set via systemctl edit av-service or export)
+# VIRUSTOTAL_API_KEY=your_api_key_here
+
+# Optional: Ollama/LLM configuration
+# OLLAMA_HOST=http://localhost:11434
+# LLM_MODEL=llama3.2:3b
+
+# Thread pool size (default: number of CPUs)
+# TOKIO_WORKER_THREADS=8
+
+# Max concurrent scans
+# MAX_CONCURRENT_SCANS=4
+EOF
+    chmod 644 "${pkgdir}/etc/default/av-service"
+
+    # Install YARA rules directory structure
+    msg "Installing YARA rules infrastructure..."
+    install -dm755 "${pkgdir}/var/lib/cybershield/rules"
+    # Note: YARA rules are user-managed; sample rules can be downloaded separately
+
+    # Install documentation
+    msg "Installing documentation..."
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/cybershield/README.md"
+    install -Dm644 ARCHITECTURE.md "${pkgdir}/usr/share/doc/cybershield/ARCHITECTURE.md"
+    install -Dm644 INSTALLATION.md "${pkgdir}/usr/share/doc/cybershield/INSTALLATION.md"
+    
+    # Install sample configuration
+    if [ -f config/example.toml ]; then
+        install -Dm644 config/example.toml "${pkgdir}/usr/share/doc/cybershield/config.example.toml"
+    fi
+
+    # Install man pages if available
+    if [ -f man/av-service.1 ]; then
+        install -Dm644 man/av-service.1 "${pkgdir}/usr/share/man/man1/av-service.1"
+        gzip -9 "${pkgdir}/usr/share/man/man1/av-service.1"
+    fi
+
+    # Install example VM setup scripts
+    if [ -d sandbox/vm-setup ]; then
+        install -dm755 "${pkgdir}/usr/share/doc/cybershield/sandbox"
+        cp -r sandbox/vm-setup/* "${pkgdir}/usr/share/doc/cybershield/sandbox/" || true
+    fi
+
+    msg "Package installation complete"
+}
+
+post_install() {
+    cat << 'EOF'
+
+╔════════════════════════════════════════════════════════════════╗
+║                  CyberShield Installation Complete             ║
+╚════════════════════════════════════════════════════════════════╝
+
+✓ Binaries installed to: /opt/cybershield/bin/
+✓ Configuration template: /etc/cybershield/config.toml
+✓ eBPF LSM object (if available): /opt/cybershield/lib/lsm_file_monitor.o
+✓ Data directories: /var/lib/cybershield/, /var/log/cybershield/
+
+NEXT STEPS:
+
+1. CONFIGURE VIRUSTOTAL API KEY (optional):
+   $ sudo nano /etc/cybershield/config.toml
+   
+   Or set environment variable:
+   $ export VIRUSTOTAL_API_KEY="your-api-key-here"
+   $ sudo -E systemctl edit av-service
+   $ # Add: Environment="VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}"
+
+2. ENABLE BPF_LSM KERNEL (for kernel monitoring):
+   Check if your kernel has BPF_LSM enabled:
+   $ grep CONFIG_BPF_LSM /boot/config-$(uname -r)
+   
+   If CONFIG_BPF_LSM=y is present, eBPF monitoring is available.
+   
+   If not, you can:
+   - Use linux-zen or linux-hardened (AUR) - usually have BPF_LSM enabled
+   - Or compile kernel with CONFIG_BPF_LSM=y
+   - Or use heuristic + ClamAV + YARA without kernel monitoring
+
+3. INSTALL YARA RULES:
+   $ sudo git clone https://github.com/Yara-Rules/rules.git \
+     /var/lib/cybershield/rules
+
+4. UPDATE CLAMAV SIGNATURES:
+   $ sudo freshclam
+
+5. OPTIONAL - INSTALL OLLAMA FOR LLM:
+   $ curl -fsSL https://ollama.ai/install.sh | sh
+   $ ollama pull llama3.2:3b
+   
+   Then configure in /etc/cybershield/config.toml:
+   [llm]
+   enabled = true
+   model = "llama3.2:3b"
+
+6. ENABLE AND START SERVICE:
+   $ sudo systemctl enable av-service.service
+   $ sudo systemctl enable av-service.socket
+   $ sudo systemctl start av-service.service
+   
+   Or use preset (auto-enable on install):
+   $ sudo systemctl preset av-service.service
+   $ sudo systemctl daemon-reload
+   $ sudo systemctl start av-service.service
+
+7. VERIFY SERVICE IS RUNNING:
+   $ sudo systemctl status av-service
+   $ sudo journalctl -u av-service -f
+   
+8. TEST SCANNING:
+   $ wget http://www.eicar.org/download/eicar.com.txt -O /tmp/eicar.txt
+   # av-service should detect and log this test file
+   
+   Or manually:
+   $ echo "/tmp/eicar.txt" | nc -u -w 1 /var/run/av_event.sock
+
+9. OPTIONAL - SETUP SANDBOX VM:
+   See: /usr/share/doc/cybershield/sandbox/
+   Or: https://github.com/cybershield/cybershield/wiki/Sandbox-Setup
+
+CONFIGURATION REFERENCE:
+• Config: /etc/cybershield/config.toml
+• Env vars: /etc/default/av-service
+• Database: /var/lib/cybershield/hash_db.sqlite
+• YARA rules: /var/lib/cybershield/rules/
+• Logs: /var/log/cybershield/ (also: journalctl -u av-service)
+
+DOCUMENTATION:
+• /usr/share/doc/cybershield/README.md
+• /usr/share/doc/cybershield/ARCHITECTURE.md
+• /usr/share/doc/cybershield/INSTALLATION.md
+
+For more help:
+$ man av-service           (if man page installed)
+$ sudo journalctl -u av-service --all
+$ pacman -S cybershield    (to update)
+
+EOF
+}
+
+post_upgrade() {
+    post_install
+    
+    # Restart service on upgrade
+    if systemctl is-active --quiet av-service; then
+        msg "Restarting av-service..."
+        systemctl restart av-service || true
+    fi
+}
+
+post_remove() {
+    cat << 'EOF'
+
+CyberShield has been removed.
+
+Configuration and data preserved:
+• /etc/cybershield/config.toml
+• /var/lib/cybershield/ (threat cache, YARA rules)
+• /var/log/cybershield/ (logs)
+
+To completely remove CyberShield:
+$ sudo rm -rf /etc/cybershield /var/lib/cybershield /var/log/cybershield
+
+EOF
+}

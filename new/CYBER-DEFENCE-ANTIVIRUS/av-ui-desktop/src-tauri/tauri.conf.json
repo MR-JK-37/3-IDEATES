@@ -1,0 +1,84 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "CyberShield",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "window": {
+        "all": false,
+        "close": true,
+        "hide": true,
+        "show": true,
+        "maximize": true,
+        "minimize": true,
+        "unmaximize": true,
+        "unminimize": true
+      },
+      "shell": {
+        "all": false,
+        "execute": true,
+        "open": true
+      },
+      "notification": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "identifier": "com.cybershield.antivirus",
+      "targets": "all",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "windows": {
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      },
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "10.13"
+      }
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "CyberShield",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "cli": {
+      "description": "CyberShield Antivirus",
+      "longDescription": "A production-grade, cross-platform antivirus solution with kernel-level protection.",
+      "args": [
+        {
+          "short": "v",
+          "name": "verbose",
+          "description": "Increase logging verbosity"
+        }
+      ]
+    }
+  }
+}

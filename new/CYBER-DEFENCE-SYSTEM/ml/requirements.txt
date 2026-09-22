@@ -1,0 +1,6 @@
+tflite-runtime>=2.9; python_version>="3.8"
+numpy
+yara-python
+
+# Optional for full TensorFlow if needed (heavy):
+# tensorflow>=2.9
