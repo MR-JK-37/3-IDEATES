@@ -1,0 +1,25 @@
+// Project-level build configuration for Android
+buildscript {
+    ext {
+        buildToolsVersion = "34.0.0"
+        minSdkVersion = 26
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+        ndkVersion = "25.2.9519653"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

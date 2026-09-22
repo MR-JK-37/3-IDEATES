@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYBERSHIELD PRO - Dashboard Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            height: 100vh;
+            overflow-y: auto;
+            background: #0a0e27;
+            box-shadow: 0 0 60px rgba(0, 245, 255, 0.1);
+        }
+
+        /* Header */
+        .header {
+            padding: 24px 16px;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(0, 245, 255, 0.05) 0%, rgba(0, 245, 255, 0) 100%);
+            border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            color: #00f5ff;
+            text-shadow: 0 0 20px rgba(0, 245, 255, 0.6), 0 0 40px rgba(0, 245, 255, 0.3);
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.75);
+            margin-top: 6px;
+        }
+
+        /* Glass Card */
+        .glass-card {
+            margin: 16px;
+            margin-bottom: 8px;
+            padding: 18px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(0, 245, 255, 0.12);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(0, 245, 255, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00f5ff;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Status Section */
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-vertical: 6px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .status-value {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #06ffa5;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* Resource Section */
+        .resource-section {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .progress-container {
+            display: flex;
+            align-items: center;
+            margin-vertical: 6px;
+            gap: 8px;
+        }
+
+        .progress-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.75);
+            width: 40px;
+            text-align: right;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 6px;
+            background: linear-gradient(90deg, currentColor, currentColor);
+            transition: width 0.3s ease;
+        }
+
+        .progress-fill.cpu { background: #00f5ff; }
+        .progress-fill.mem { background: #8338ec; }
+        .progress-fill.net { background: #06ffa5; }
+
+        .progress-value {
+            font-size: 12px;
+            color: #fff;
+            width: 44px;
+            text-align: right;
+        }
+
+        /* Threats Grid */
+        .threats-grid {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 16px;
+            margin-top: 8px;
+            gap: 12px;
+        }
+
+        .threat-card {
+            flex: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .threat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .threat-card.critical { background: linear-gradient(135deg, rgba(255, 0, 110, 0.3), rgba(255, 0, 110, 0.05)); border: 1px solid rgba(255, 0, 110, 0.2); }
+        .threat-card.high { background: linear-gradient(135deg, rgba(255, 133, 0, 0.3), rgba(255, 133, 0, 0.05)); border: 1px solid rgba(255, 133, 0, 0.2); }
+        .threat-card.total { background: linear-gradient(135deg, rgba(6, 255, 165, 0.3), rgba(6, 255, 165, 0.05)); border: 1px solid rgba(6, 255, 165, 0.2); }
+
+        .threat-card-gradient {
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .threat-icon {
+            font-size: 28px;
+            margin-bottom: 6px;
+        }
+
+        .threat-count {
+            font-size: 30px;
+            font-weight: 900;
+            margin: 6px 0;
+        }
+
+        .threat-count.critical { color: #ff006e; }
+        .threat-count.high { color: #ff8500; }
+        .threat-count.total { color: #06ffa5; }
+
+        .threat-label {
+            font-size: 13px;
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .threat-subtitle {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.65);
+            margin-top: 6px;
+            text-align: center;
+        }
+
+        /* Live Network Graph */
+        .network-container {
+            display: flex;
+            padding: 8px 0;
+            gap: 20px;
+        }
+
+        .device-column {
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .device-bubble {
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(0, 245, 255, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 6px;
+            font-size: 24px;
+        }
+
+        .device-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .connections-column {
+            flex: 1;
+        }
+
+        .connection-row {
+            display: flex;
+            align-items: center;
+            margin-vertical: 8px;
+        }
+
+        .line {
+            width: 12px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 2px;
+            margin-right: 8px;
+        }
+
+        .node-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .node-wrapper {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .node-pulse {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            animation: pulse-expand 1.4s ease-out infinite;
+        }
+
+        .node-pulse.red { background: rgba(255, 0, 110, 0.5); }
+        .node-pulse.green { background: rgba(6, 255, 165, 0.5); }
+        .node-pulse.orange { background: rgba(255, 133, 0, 0.5); }
+
+        @keyframes pulse-expand {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(1.6); opacity: 0.1; }
+        }
+
+        .node-core {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .node-core.red { background: #ff006e; }
+        .node-core.green { background: #06ffa5; }
+        .node-core.orange { background: #ff8500; }
+
+        .node-label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            flex-shrink: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Threat Item */
+        .threat-item {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            padding: 14px;
+            margin-vertical: 8px;
+            border-left: 4px solid;
+            display: flex;
+            gap: 12px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .threat-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .threat-item.critical { border-left-color: #ff006e; }
+        .threat-item.high { border-left-color: #ff8500; }
+        .threat-item.medium { border-left-color: #ffbe0b; }
+
+        .threat-badge {
+            padding: 6px 10px;
+            border-radius: 8px;
+            align-self: flex-start;
+            margin-top: 2px;
+        }
+
+        .threat-badge.critical { background: rgba(255, 0, 110, 0.2); }
+        .threat-badge.high { background: rgba(255, 133, 0, 0.2); }
+        .threat-badge.medium { background: rgba(255, 190, 11, 0.2); }
+
+        .threat-type {
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .threat-type.critical { color: #ff006e; }
+        .threat-type.high { color: #ff8500; }
+        .threat-type.medium { color: #ffbe0b; }
+
+        .threat-content {
+            flex: 1;
+        }
+
+        .threat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .threat-name {
+            font-size: 16px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .threat-severity {
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .threat-severity.critical { color: #ff006e; }
+        .threat-severity.high { color: #ff8500; }
+        .threat-severity.medium { color: #ffbe0b; }
+
+        .threat-description {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.75);
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .threat-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .threat-time {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .threat-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-button {
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(0, 245, 255, 0.08);
+            border: 1px solid rgba(0, 245, 255, 0.1);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .action-button:hover {
+            background: rgba(0, 245, 255, 0.15);
+            box-shadow: 0 0 12px rgba(0, 245, 255, 0.2);
+        }
+
+        .action-danger {
+            background: rgba(255, 0, 110, 0.08) !important;
+            border-color: rgba(255, 0, 110, 0.1) !important;
+        }
+
+        .action-danger:hover {
+            background: rgba(255, 0, 110, 0.15) !important;
+            box-shadow: 0 0 12px rgba(255, 0, 110, 0.2) !important;
+        }
+
+        /* Scroll */
+        .container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .container::-webkit-scrollbar-thumb {
+            background: rgba(0, 245, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .container::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 245, 255, 0.5);
+        }
+
+        .content {
+            padding-bottom: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="content">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo">🛡️ CYBERSHIELD PRO</div>
+                <div class="subtitle">Real-Time Cyber Defense System</div>
+            </div>
+
+            <!-- Status Card -->
+            <div class="glass-card">
+                <div class="card-title">SYSTEM STATUS</div>
+                <div class="status-row">
+                    <span class="status-label">Monitoring:</span>
+                    <div class="status-value">
+                        <div class="status-dot"></div>
+                        <span class="status-text">ACTIVE</span>
+                    </div>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Protected Since:</span>
+                    <span class="status-text">2h 34m</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Last Scan:</span>
+                    <span class="status-text" id="lastScan"></span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">OS Version:</span>
+                    <span class="status-text">Android 13</span>
+                </div>
+                <div class="resource-section">
+                    <div class="progress-container">
+                        <span class="progress-label">CPU:</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill cpu" style="width: 65%"></div>
+                        </div>
+                        <span class="progress-value">65%</span>
+                    </div>
+                    <div class="progress-container">
+                        <span class="progress-label">MEM:</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill mem" style="width: 48%"></div>
+                        </div>
+                        <span class="progress-value">48%</span>
+                    </div>
+                    <div class="progress-container">
+                        <span class="progress-label">NET:</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill net" style="width: 12%"></div>
+                        </div>
+                        <span class="progress-value">12%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Threats Grid -->
+            <div class="threats-grid">
+                <div class="threat-card critical">
+                    <div class="threat-card-gradient">
+                        <div class="threat-icon">🔴</div>
+                        <div class="threat-count critical">3</div>
+                        <div class="threat-label">Critical</div>
+                        <div class="threat-subtitle">Blocked Today</div>
+                    </div>
+                </div>
+                <div class="threat-card high">
+                    <div class="threat-card-gradient">
+                        <div class="threat-icon">🟠</div>
+                        <div class="threat-count high">5</div>
+                        <div class="threat-label">High Risk</div>
+                        <div class="threat-subtitle">Quarantined</div>
+                    </div>
+                </div>
+                <div class="threat-card total">
+                    <div class="threat-card-gradient">
+                        <div class="threat-icon">🟢</div>
+                        <div class="threat-count total">12</div>
+                        <div class="threat-label">Total</div>
+                        <div class="threat-subtitle">Threats Found</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Network Graph -->
+            <div class="glass-card">
+                <div class="card-title">🎯 LIVE THREAT ACTIVITY</div>
+                <div class="network-container">
+                    <div class="device-column">
+                        <div class="device-bubble">📱</div>
+                        <div class="device-label">Device</div>
+                    </div>
+                    <div class="connections-column">
+                        <div class="connection-row">
+                            <div class="line"></div>
+                            <div class="node-row">
+                                <div class="node-wrapper">
+                                    <div class="node-pulse red"></div>
+                                    <div class="node-core red"></div>
+                                </div>
+                                <div class="node-label">45.67.89.123 (Blocked C2)</div>
+                            </div>
+                        </div>
+                        <div class="connection-row">
+                            <div class="line"></div>
+                            <div class="node-row">
+                                <div class="node-wrapper">
+                                    <div class="node-pulse green" style="animation-delay: 0.3s"></div>
+                                    <div class="node-core green"></div>
+                                </div>
+                                <div class="node-label">cloudflare.com (Safe)</div>
+                            </div>
+                        </div>
+                        <div class="connection-row">
+                            <div class="line"></div>
+                            <div class="node-row">
+                                <div class="node-wrapper">
+                                    <div class="node-pulse orange" style="animation-delay: 0.6s"></div>
+                                    <div class="node-core orange"></div>
+                                </div>
+                                <div class="node-label">suspicious-site.xyz (Analyzing)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Threats -->
+            <div class="glass-card">
+                <div class="card-title">⚡ RECENT THREATS</div>
+
+                <div class="threat-item critical">
+                    <div class="threat-badge critical">
+                        <div class="threat-type critical">MALWARE</div>
+                    </div>
+                    <div class="threat-content">
+                        <div class="threat-header">
+                            <div class="threat-name">Trojan.Generic.AS4K</div>
+                            <div class="threat-severity critical">CRITICAL</div>
+                        </div>
+                        <div class="threat-description">Suspicious process attempting to modify system files in /system/bin</div>
+                        <div class="threat-footer">
+                            <span class="threat-time">20:35</span>
+                            <div class="threat-actions">
+                                <button class="action-button">Details</button>
+                                <button class="action-button action-danger">Block</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="threat-item high">
+                    <div class="threat-badge high">
+                        <div class="threat-type high">NETWORK</div>
+                    </div>
+                    <div class="threat-content">
+                        <div class="threat-header">
+                            <div class="threat-name">185.220.101.42</div>
+                            <div class="threat-severity high">HIGH</div>
+                        </div>
+                        <div class="threat-description">Unusual outbound connection to known C&C server detected</div>
+                        <div class="threat-footer">
+                            <span class="threat-time">20:32</span>
+                            <div class="threat-actions">
+                                <button class="action-button">Details</button>
+                                <button class="action-button action-danger">Block</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="threat-item medium">
+                    <div class="threat-badge medium">
+                        <div class="threat-type medium">PHISHING</div>
+                    </div>
+                    <div class="threat-content">
+                        <div class="threat-header">
+                            <div class="threat-name">fake-paypal-login.xyz</div>
+                            <div class="threat-severity medium">MEDIUM</div>
+                        </div>
+                        <div class="threat-description">URL similarity: 94% match to paypal.com. Credentials harvesting attempt blocked</div>
+                        <div class="threat-footer">
+                            <span class="threat-time">20:28</span>
+                            <div class="threat-actions">
+                                <button class="action-button">Details</button>
+                                <button class="action-button action-danger">Block</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Update last scan time
+        document.getElementById('lastScan').textContent = new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+
+        // Add hover interactions
+        document.querySelectorAll('.threat-card').forEach(card => {
+            card.addEventListener('click', () => {
+                card.style.transform = 'scale(0.98)';
+                setTimeout(() => card.style.transform = '', 100);
+            });
+        });
+
+        document.querySelectorAll('.action-button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                btn.style.background = 'rgba(0, 245, 255, 0.25)';
+                setTimeout(() => btn.style.background = '', 200);
+            });
+        });
+    </script>
+</body>
+</html>
